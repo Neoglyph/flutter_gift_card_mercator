@@ -1,4 +1,8 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
+import 'package:camera/camera.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class GiftCard {
   final String serialCode;
@@ -18,6 +22,183 @@ class GiftCard {
 
 void main() {
   runApp(const MyApp());
+}
+
+class CardScannerScreen extends StatefulWidget {
+  final Function(String) onSerialDetected;
+
+  const CardScannerScreen({super.key, required this.onSerialDetected});
+
+  @override
+  State<CardScannerScreen> createState() => _CardScannerScreenState();
+}
+
+class _CardScannerScreenState extends State<CardScannerScreen> {
+  CameraController? _controller;
+  final TextRecognizer _textRecognizer = TextRecognizer();
+  bool _isProcessing = false;
+  String _detectedText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeCamera();
+  }
+
+  Future<void> _initializeCamera() async {
+    try {
+      final status = await Permission.camera.request();
+      if (status.isGranted) {
+        final cameras = await availableCameras();
+        if (cameras.isNotEmpty) {
+          _controller = CameraController(cameras.first, ResolutionPreset.high);
+          await _controller!.initialize();
+          if (mounted) {
+            setState(() {});
+            // Start detection after a short delay
+            Future.delayed(const Duration(milliseconds: 500), _captureAndProcess);
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _detectedText = 'No cameras available';
+            });
+          }
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _detectedText = 'Camera permission denied';
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _detectedText = 'Error initializing camera: $e';
+        });
+      }
+    }
+  }
+
+  bool _isDetectionActive = true;
+
+  void _captureAndProcess() async {
+    if (!_isDetectionActive || _isProcessing || _controller?.value.isInitialized != true) return;
+    
+    _isProcessing = true;
+    try {
+      final image = await _controller!.takePicture();
+      final inputImage = InputImage.fromFilePath(image.path);
+      final recognizedText = await _textRecognizer.processImage(inputImage);
+      
+      if (mounted) {
+        setState(() {
+          _detectedText = recognizedText.text;
+        });
+      }
+
+      for (final block in recognizedText.blocks) {
+        for (final line in block.lines) {
+          final text = line.text.replaceAll(' ', '').replaceAll('-', '');
+          if (RegExp(r'^\d{15}$').hasMatch(text)) {
+            _isDetectionActive = false;
+            widget.onSerialDetected(text);
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      // Log error processing image: $e
+    } finally {
+      _isProcessing = false;
+      // Continue trying to detect after a short delay
+      if (_isDetectionActive && mounted) {
+        Future.delayed(const Duration(milliseconds: 1000), _captureAndProcess);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _isDetectionActive = false;
+    _controller?.dispose();
+    _textRecognizer.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoPageScaffold(
+      navigationBar: CupertinoNavigationBar(
+        middle: const Text('Scan Gift Card'),
+        leading: CupertinoButton(
+          padding: EdgeInsets.zero,
+          child: const Text('Cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      child: Stack(
+        children: [
+          if (_controller?.value.isInitialized == true)
+            SizedBox.expand(
+              child: CameraPreview(_controller!),
+            )
+          else
+            const Center(
+              child: CupertinoActivityIndicator(),
+            ),
+          Positioned(
+            bottom: 100,
+            left: 20,
+            right: 20,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: CupertinoColors.systemBackground.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Point camera at gift card serial number',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Looking for 15-digit number...',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: CupertinoColors.secondaryLabel,
+                    ),
+                  ),
+                  if (_detectedText.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Detected: $_detectedText',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Center(
+                    child: CupertinoButton.filled(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                      onPressed: _isProcessing ? null : _captureAndProcess,
+                      child: Text(_isProcessing ? 'Processing...' : 'Capture'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -70,10 +251,38 @@ class _MyHomePageState extends State<MyHomePage> {
           content: Column(
             children: [
               const SizedBox(height: 16),
-              CupertinoTextField(
-                controller: serialController,
-                placeholder: 'Serial Code',
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: CupertinoTextField(
+                      controller: serialController,
+                      placeholder: 'Serial Code',
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  CupertinoButton(
+                    padding: const EdgeInsets.all(8),
+                    minSize: 40,
+                    child: const Icon(
+                      CupertinoIcons.camera,
+                      size: 20,
+                      color: CupertinoColors.systemBlue,
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        CupertinoPageRoute(
+                          builder: (context) => CardScannerScreen(
+                            onSerialDetected: (serial) {
+                              serialController.text = serial;
+                              Navigator.of(context).pop();
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               CupertinoTextField(
@@ -193,8 +402,8 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: CupertinoColors.systemBackground,
         trailing: CupertinoButton(
           padding: EdgeInsets.zero,
-          child: const Icon(CupertinoIcons.add),
           onPressed: _showAddCardDialog,
+          child: const Icon(CupertinoIcons.add),
         ),
       ),
       child: SafeArea(
