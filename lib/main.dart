@@ -1,8 +1,10 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
+// import 'package:flutter/foundation.dart';
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class GiftCard {
   final String serialCode;
@@ -17,6 +19,24 @@ class GiftCard {
 
   String get formattedValue {
     return '€${value.toStringAsFixed(2)}';
+  }
+
+  // Convert GiftCard to JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'serialCode': serialCode,
+      'value': value,
+      'currency': currency,
+    };
+  }
+
+  // Create GiftCard from JSON
+  factory GiftCard.fromJson(Map<String, dynamic> json) {
+    return GiftCard(
+      serialCode: json['serialCode'] as String,
+      value: (json['value'] as num).toDouble(),
+      currency: json['currency'] as String? ?? 'EUR',
+    );
   }
 }
 
@@ -56,7 +76,8 @@ class _CardScannerScreenState extends State<CardScannerScreen> {
           if (mounted) {
             setState(() {});
             // Start detection after a short delay
-            Future.delayed(const Duration(milliseconds: 500), _captureAndProcess);
+            Future.delayed(
+                const Duration(milliseconds: 500), _captureAndProcess);
           }
         } else {
           if (mounted) {
@@ -84,14 +105,16 @@ class _CardScannerScreenState extends State<CardScannerScreen> {
   bool _isDetectionActive = true;
 
   void _captureAndProcess() async {
-    if (!_isDetectionActive || _isProcessing || _controller?.value.isInitialized != true) return;
-    
+    if (!_isDetectionActive ||
+        _isProcessing ||
+        _controller?.value.isInitialized != true) return;
+
     _isProcessing = true;
     try {
       final image = await _controller!.takePicture();
       final inputImage = InputImage.fromFilePath(image.path);
       final recognizedText = await _textRecognizer.processImage(inputImage);
-      
+
       if (mounted) {
         setState(() {
           _detectedText = recognizedText.text;
@@ -186,7 +209,8 @@ class _CardScannerScreenState extends State<CardScannerScreen> {
                   const SizedBox(height: 12),
                   Center(
                     child: CupertinoButton.filled(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 8),
                       onPressed: _isProcessing ? null : _captureAndProcess,
                       child: Text(_isProcessing ? 'Processing...' : 'Capture'),
                     ),
@@ -231,13 +255,66 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  final List<GiftCard> _giftCards = [
-    GiftCard(serialCode: 'AMZ-1234-5678-9012', value: 25.00),
-    GiftCard(serialCode: 'APL-4567-8901-2345', value: 50.00),
-    GiftCard(serialCode: 'SBX-7890-1234-5678', value: 15.00),
-    GiftCard(serialCode: 'TGT-2345-6789-0123', value: 100.00),
-    GiftCard(serialCode: 'WMT-5678-9012-3456', value: 75.00),
-  ];
+  List<GiftCard> _giftCards = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGiftCards();
+  }
+
+  // Load gift cards from SharedPreferences
+  Future<void> _loadGiftCards() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? giftCardsJson = prefs.getString('gift_cards');
+      
+      if (giftCardsJson != null) {
+        final List<dynamic> giftCardsList = jsonDecode(giftCardsJson);
+        setState(() {
+          _giftCards = giftCardsList
+              .map((json) => GiftCard.fromJson(json as Map<String, dynamic>))
+              .toList();
+        });
+      } else {
+        // Add sample cards only if no saved cards exist
+        setState(() {
+          _giftCards = [
+            GiftCard(serialCode: 'AMZ-1234-5678-9012', value: 25.00),
+            GiftCard(serialCode: 'APL-4567-8901-2345', value: 50.00),
+            GiftCard(serialCode: 'SBX-7890-1234-5678', value: 15.00),
+            GiftCard(serialCode: 'TGT-2345-6789-0123', value: 100.00),
+            GiftCard(serialCode: 'WMT-5678-9012-3456', value: 75.00),
+          ];
+        });
+        await _saveGiftCards();
+      }
+    } catch (e) {
+      // If loading fails, start with sample cards
+      setState(() {
+        _giftCards = [
+          GiftCard(serialCode: 'AMZ-1234-5678-9012', value: 25.00),
+          GiftCard(serialCode: 'APL-4567-8901-2345', value: 50.00),
+          GiftCard(serialCode: 'SBX-7890-1234-5678', value: 15.00),
+          GiftCard(serialCode: 'TGT-2345-6789-0123', value: 100.00),
+          GiftCard(serialCode: 'WMT-5678-9012-3456', value: 75.00),
+        ];
+      });
+    }
+  }
+
+  // Save gift cards to SharedPreferences
+  Future<void> _saveGiftCards() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String giftCardsJson = jsonEncode(
+        _giftCards.map((card) => card.toJson()).toList(),
+      );
+      await prefs.setString('gift_cards', giftCardsJson);
+    } catch (e) {
+      // Handle save error silently
+    }
+  }
 
   void _showAddCardDialog() {
     final serialController = TextEditingController();
@@ -257,7 +334,8 @@ class _MyHomePageState extends State<MyHomePage> {
                     child: CupertinoTextField(
                       controller: serialController,
                       placeholder: 'Serial Code',
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -288,8 +366,10 @@ class _MyHomePageState extends State<MyHomePage> {
               CupertinoTextField(
                 controller: valueController,
                 placeholder: 'Value',
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
             ],
           ),
@@ -303,10 +383,10 @@ class _MyHomePageState extends State<MyHomePage> {
             CupertinoDialogAction(
               isDefaultAction: true,
               child: const Text('Add'),
-              onPressed: () {
+              onPressed: () async {
                 final serial = serialController.text.trim();
                 final valueText = valueController.text.trim();
-                
+
                 if (serial.isNotEmpty && valueText.isNotEmpty) {
                   final value = double.tryParse(valueText);
                   if (value != null && value > 0) {
@@ -316,6 +396,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         value: value,
                       ));
                     });
+                    await _saveGiftCards();
                     Navigator.of(context).pop();
                   }
                 }
@@ -330,7 +411,8 @@ class _MyHomePageState extends State<MyHomePage> {
   void _showEditCardDialog(int index) {
     final giftCard = _giftCards[index];
     final serialController = TextEditingController(text: giftCard.serialCode);
-    final valueController = TextEditingController(text: giftCard.value.toString());
+    final valueController =
+        TextEditingController(text: giftCard.value.toString());
 
     showCupertinoDialog(
       context: context,
@@ -343,14 +425,17 @@ class _MyHomePageState extends State<MyHomePage> {
               CupertinoTextField(
                 controller: serialController,
                 placeholder: 'Serial Code',
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
               const SizedBox(height: 8),
               CupertinoTextField(
                 controller: valueController,
                 placeholder: 'Value',
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
             ],
           ),
@@ -364,10 +449,10 @@ class _MyHomePageState extends State<MyHomePage> {
             CupertinoDialogAction(
               isDefaultAction: true,
               child: const Text('Save'),
-              onPressed: () {
+              onPressed: () async {
                 final serial = serialController.text.trim();
                 final valueText = valueController.text.trim();
-                
+
                 if (serial.isNotEmpty && valueText.isNotEmpty) {
                   final value = double.tryParse(valueText);
                   if (value != null && value > 0) {
@@ -377,6 +462,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         value: value,
                       );
                     });
+                    await _saveGiftCards();
                     Navigator.of(context).pop();
                   }
                 }
@@ -388,10 +474,11 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  void _removeCard(int index) {
+  void _removeCard(int index) async {
     setState(() {
       _giftCards.removeAt(index);
     });
+    await _saveGiftCards();
   }
 
   @override
@@ -492,7 +579,8 @@ class _MyHomePageState extends State<MyHomePage> {
                                   builder: (BuildContext context) {
                                     return CupertinoAlertDialog(
                                       title: const Text('Delete Gift Card'),
-                                      content: Text('Are you sure you want to delete ${giftCard.serialCode}?'),
+                                      content: Text(
+                                          'Are you sure you want to delete ${giftCard.serialCode}?'),
                                       actions: [
                                         CupertinoDialogAction(
                                           child: const Text('Cancel'),
