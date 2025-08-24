@@ -38,7 +38,6 @@ dependencies:
   # Camera and text recognition
   camera: ^0.10.5+9
   google_mlkit_text_recognition: ^0.13.0
-  permission_handler: ^11.3.1
   
   # Persistent storage
   shared_preferences: ^2.2.2
