@@ -45,9 +45,9 @@ void main() {
 }
 
 class CardScannerScreen extends StatefulWidget {
-  final Function(String) onSerialDetected;
+  final Function(String, double) onCardAdded;
 
-  const CardScannerScreen({super.key, required this.onSerialDetected});
+  const CardScannerScreen({super.key, required this.onCardAdded});
 
   @override
   State<CardScannerScreen> createState() => _CardScannerScreenState();
@@ -70,7 +70,11 @@ class _CardScannerScreenState extends State<CardScannerScreen> {
       // Permission should already be granted when navigating here
       final cameras = await availableCameras();
       if (cameras.isNotEmpty) {
-        _controller = CameraController(cameras.first, ResolutionPreset.high);
+        _controller = CameraController(
+          cameras.first, 
+          ResolutionPreset.veryHigh,
+          enableAudio: false,
+        );
         await _controller!.initialize();
         if (mounted) {
           setState(() {});
@@ -106,8 +110,8 @@ class _CardScannerScreenState extends State<CardScannerScreen> {
           CupertinoPageRoute(
             builder: (context) => CapturePreviewScreen(
               imagePath: image.path,
-              onSerialConfirmed: (serial) {
-                widget.onSerialDetected(serial);
+              onCardAdded: (serial, value) {
+                widget.onCardAdded(serial, value);
               },
             ),
           ),
@@ -167,7 +171,7 @@ class _CardScannerScreenState extends State<CardScannerScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Point camera at gift card serial number',
+                    'Position the 15-digit serial number',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -175,7 +179,7 @@ class _CardScannerScreenState extends State<CardScannerScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Tap capture when ready',
+                    'Fill the frame with the number area. Use good lighting and hold steady.',
                     style: TextStyle(
                       fontSize: 14,
                       color: CupertinoColors.secondaryLabel,
@@ -218,12 +222,12 @@ class _CardScannerScreenState extends State<CardScannerScreen> {
 
 class CapturePreviewScreen extends StatefulWidget {
   final String imagePath;
-  final Function(String) onSerialConfirmed;
+  final Function(String, double) onCardAdded;
 
   const CapturePreviewScreen({
     super.key,
     required this.imagePath,
-    required this.onSerialConfirmed,
+    required this.onCardAdded,
   });
 
   @override
@@ -254,20 +258,56 @@ class _CapturePreviewScreenState extends State<CapturePreviewScreen> {
         });
       }
 
-      // Look for 15-digit serial number
+      // Look for serial numbers with multiple patterns
+      final List<String> allNumbers = [];
+      
       for (final block in recognizedText.blocks) {
         for (final line in block.lines) {
-          final text = line.text.replaceAll(' ', '').replaceAll('-', '');
-          if (RegExp(r'^\d{15}$').hasMatch(text)) {
-            if (mounted) {
-              setState(() {
-                _foundSerial = text;
-              });
+          for (final element in line.elements) {
+            // Get raw text
+            final rawText = element.text;
+            allNumbers.add(rawText);
+            
+            // Clean text for processing
+            final cleanText = rawText.replaceAll(RegExp(r'[^0-9]'), '');
+            
+            // Check various patterns for serial numbers
+            if (_isValidSerial(cleanText)) {
+              if (mounted) {
+                setState(() {
+                  _foundSerial = cleanText;
+                });
+              }
+              break;
             }
-            break;
+            
+            // Also check if this element might be part of a larger number
+            if (cleanText.length >= 10) {
+              // Look for any sequence of 15 digits within the text
+              final matches = RegExp(r'\d{15}').allMatches(cleanText);
+              for (final match in matches) {
+                final serial = match.group(0)!;
+                if (_isValidSerial(serial)) {
+                  if (mounted) {
+                    setState(() {
+                      _foundSerial = serial;
+                    });
+                  }
+                  break;
+                }
+              }
+            }
           }
+          if (_foundSerial != null) break;
         }
         if (_foundSerial != null) break;
+      }
+      
+      // Store all detected numbers for debugging
+      if (mounted && allNumbers.isNotEmpty) {
+        setState(() {
+          _detectedText += '\n\nDetected Numbers: ${allNumbers.join(', ')}';
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -277,6 +317,80 @@ class _CapturePreviewScreenState extends State<CapturePreviewScreen> {
         });
       }
     }
+  }
+
+  bool _isValidSerial(String text) {
+    // Check for exactly 15 digits
+    if (RegExp(r'^\d{15}$').hasMatch(text)) {
+      return true;
+    }
+    
+    // Check for common Mercator card patterns
+    // Pattern like: 591840279069565 (the example from your image)
+    if (text.length == 15 && text.startsWith('59')) {
+      return true;
+    }
+    
+    // Check for other common gift card prefixes
+    if (text.length == 15 && (text.startsWith('4') || text.startsWith('5') || text.startsWith('6'))) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  void _showValueDialog() {
+    final valueController = TextEditingController();
+    
+    showCupertinoDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return CupertinoAlertDialog(
+          title: const Text('Card Value'),
+          content: Column(
+            children: [
+              const SizedBox(height: 16),
+              const Text('Enter the value for this gift card:'),
+              const SizedBox(height: 8),
+              CupertinoTextField(
+                controller: valueController,
+                placeholder: 'Value (e.g. 25.00)',
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                autofocus: true,
+              ),
+            ],
+          ),
+          actions: [
+            CupertinoDialogAction(
+              child: const Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              child: const Text('Add Card'),
+              onPressed: () {
+                final valueText = valueController.text.trim();
+                if (valueText.isNotEmpty) {
+                  final value = double.tryParse(valueText);
+                  if (value != null && value > 0) {
+                    // Add the card with captured serial and entered value
+                    widget.onCardAdded(_foundSerial!, value);
+                    
+                    // Close dialog and pop both preview and scanner screens
+                    Navigator.of(context).pop(); // Close dialog
+                    Navigator.of(context).pop(); // Close preview
+                    Navigator.of(context).pop(); // Close scanner
+                  }
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -381,11 +495,29 @@ class _CapturePreviewScreenState extends State<CapturePreviewScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Try taking another photo with better lighting or closer to the card.',
+                      'Try taking another photo with better lighting or closer to the card, or enter the number manually below.',
                       style: TextStyle(
                         fontSize: 14,
                         color: CupertinoColors.secondaryLabel,
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    CupertinoTextField(
+                      placeholder: 'Enter 15-digit serial manually',
+                      keyboardType: TextInputType.number,
+                      maxLength: 15,
+                      onChanged: (value) {
+                        final cleanValue = value.replaceAll(RegExp(r'[^0-9]'), '');
+                        if (cleanValue.length == 15) {
+                          setState(() {
+                            _foundSerial = cleanValue;
+                          });
+                        } else {
+                          setState(() {
+                            _foundSerial = null;
+                          });
+                        }
+                      },
                     ),
                   ],
                   
@@ -443,13 +575,10 @@ class _CapturePreviewScreenState extends State<CapturePreviewScreen> {
                     child: CupertinoButton.filled(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       onPressed: _foundSerial != null ? () {
-                        widget.onSerialConfirmed(_foundSerial!);
-                        // Pop both preview and scanner screens
-                        Navigator.of(context).pop();
-                        Navigator.of(context).pop();
+                        _showValueDialog();
                       } : null,
                       child: const Text(
-                        'Use This Serial',
+                        'Add This Card',
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w600,
@@ -562,10 +691,10 @@ class _MyHomePageState extends State<MyHomePage> {
   static const MethodChannel _cameraChannel = MethodChannel('camera_permissions');
 
   // Check and request camera permissions using AVFoundation
-  Future<void> _requestCameraAndNavigate(TextEditingController serialController) async {
+  Future<void> _requestCameraAndNavigate() async {
     if (!Platform.isIOS) {
       // For non-iOS platforms, directly navigate (or implement Android-specific logic)
-      _navigateToScanner(serialController);
+      _navigateToScanner();
       return;
     }
 
@@ -575,13 +704,13 @@ class _MyHomePageState extends State<MyHomePage> {
       
       switch (status) {
         case 'authorized':
-          _navigateToScanner(serialController);
+          _navigateToScanner();
           break;
         case 'notDetermined':
           // Request permission
           final String result = await _cameraChannel.invokeMethod('requestCameraPermission');
           if (result == 'authorized') {
-            _navigateToScanner(serialController);
+            _navigateToScanner();
           } else {
             _showPermissionDeniedDialog();
           }
@@ -595,17 +724,23 @@ class _MyHomePageState extends State<MyHomePage> {
       }
     } catch (e) {
       // Fallback to direct navigation if method channel fails
-      _navigateToScanner(serialController);
+      _navigateToScanner();
     }
   }
 
-  void _navigateToScanner(TextEditingController serialController) {
+  void _navigateToScanner() {
     Navigator.of(context).push(
       CupertinoPageRoute(
         builder: (context) => CardScannerScreen(
-          onSerialDetected: (serial) {
-            serialController.text = serial;
-            Navigator.of(context).pop();
+          onCardAdded: (serial, value) async {
+            // Add card directly to the list
+            setState(() {
+              _giftCards.add(GiftCard(
+                serialCode: serial,
+                value: value,
+              ));
+            });
+            await _saveGiftCards();
           },
         ),
       ),
@@ -702,7 +837,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       color: CupertinoColors.systemBlue,
                     ),
                     onPressed: () {
-                      _requestCameraAndNavigate(serialController);
+                      _requestCameraAndNavigate();
                     },
                   ),
                 ],

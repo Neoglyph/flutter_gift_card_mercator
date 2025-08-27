@@ -1,16 +1,9 @@
 # mercator_cards
 
-A new Flutter project.
+# How to build and deploy on a dev ios device
 
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+In XCode open the Runner project.
+Go to Product > Archive.
+Build the archive in Debug mode.
+Connect the ios device and select the device in Window - Devices and simulators.
+Add the package file to the device.
