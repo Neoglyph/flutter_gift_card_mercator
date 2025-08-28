@@ -17,6 +17,18 @@ class GiftCard {
     this.currency = 'EUR',
   });
 
+  GiftCard copyWith({
+    String? serialCode,
+    double? value,
+    String? currency,
+  }) {
+    return GiftCard(
+      serialCode: serialCode ?? this.serialCode,
+      value: value ?? this.value,
+      currency: currency ?? this.currency,
+    );
+  }
+
   String get formattedValue {
     return '€${value.toStringAsFixed(2)}';
   }
@@ -961,6 +973,89 @@ class _MyHomePageState extends State<MyHomePage> {
     await _saveGiftCards();
   }
 
+  void _showSubtractValueDialog(int index) {
+    final giftCard = _giftCards[index];
+    final amountController = TextEditingController();
+
+    showCupertinoDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return CupertinoAlertDialog(
+          title: Text('Spend from Card'),
+          content: Column(
+            children: [
+              const SizedBox(height: 16),
+              Text(
+                'Current balance: ${giftCard.formattedValue}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Enter purchase amount:'),
+              const SizedBox(height: 8),
+              CupertinoTextField(
+                controller: amountController,
+                placeholder: 'Amount (e.g. 12.50)',
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                autofocus: true,
+              ),
+            ],
+          ),
+          actions: [
+            CupertinoDialogAction(
+              child: const Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              child: const Text('Subtract'),
+              onPressed: () async {
+                final amountText = amountController.text.trim();
+                if (amountText.isNotEmpty) {
+                  final amount = double.tryParse(amountText);
+                  if (amount != null && amount > 0) {
+                    final newValue = giftCard.value - amount;
+                    if (newValue >= 0) {
+                      setState(() {
+                        _giftCards[index] = giftCard.copyWith(value: newValue);
+                      });
+                      await _saveGiftCards();
+                      Navigator.of(context).pop();
+                    } else {
+                      // Show error for insufficient balance
+                      showCupertinoDialog(
+                        context: context,
+                        builder: (context) => CupertinoAlertDialog(
+                          title: const Text('Insufficient Balance'),
+                          content: Text(
+                            'Cannot subtract ${amount.toStringAsFixed(2)}. Current balance is ${giftCard.formattedValue}.',
+                          ),
+                          actions: [
+                            CupertinoDialogAction(
+                              child: const Text('OK'),
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  }
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
@@ -1003,86 +1098,92 @@ class _MyHomePageState extends State<MyHomePage> {
                           ),
                         ],
                       ),
-                      child: CupertinoListTile(
-                        padding: const EdgeInsets.all(16),
-                        title: Text(
-                          giftCard.serialCode,
-                          style: const TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                            color: CupertinoColors.label,
+                      child: GestureDetector(
+                        onTap: () {
+                          _showSubtractValueDialog(index);
+                        },
+                        child: CupertinoListTile(
+                          padding: const EdgeInsets.all(16),
+                          title: Text(
+                            giftCard.serialCode,
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                              color: CupertinoColors.label,
+                            ),
                           ),
-                        ),
-                        subtitle: Text(
-                          'Gift Card',
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: CupertinoColors.secondaryLabel,
+                          subtitle: Text(
+                            'Tap to spend • ${giftCard.formattedValue} remaining',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: CupertinoColors.secondaryLabel,
+                            ),
                           ),
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              giftCard.formattedValue,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w600,
-                                color: CupertinoColors.systemGreen,
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                giftCard.formattedValue,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w600,
+                                  color: CupertinoColors.systemGreen,
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            CupertinoButton(
-                              padding: EdgeInsets.zero,
-                              minSize: 32,
-                              child: const Icon(
-                                CupertinoIcons.pen,
-                                color: CupertinoColors.systemBlue,
-                                size: 18,
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () {
+                                  _showEditCardDialog(index);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  child: const Icon(
+                                    CupertinoIcons.pen,
+                                    color: CupertinoColors.systemBlue,
+                                    size: 18,
+                                  ),
+                                ),
                               ),
-                              onPressed: () {
-                                _showEditCardDialog(index);
-                              },
-                            ),
-                            const SizedBox(width: 4),
-                            CupertinoButton(
-                              padding: EdgeInsets.zero,
-                              minSize: 32,
-                              child: const Icon(
-                                CupertinoIcons.delete,
-                                color: CupertinoColors.systemRed,
-                                size: 20,
+                              GestureDetector(
+                                onTap: () {
+                                  showCupertinoDialog(
+                                    context: context,
+                                    builder: (BuildContext context) {
+                                      return CupertinoAlertDialog(
+                                        title: const Text('Delete Gift Card'),
+                                        content: Text(
+                                            'Are you sure you want to delete ${giftCard.serialCode}?'),
+                                        actions: [
+                                          CupertinoDialogAction(
+                                            child: const Text('Cancel'),
+                                            onPressed: () {
+                                              Navigator.of(context).pop();
+                                            },
+                                          ),
+                                          CupertinoDialogAction(
+                                            isDestructiveAction: true,
+                                            child: const Text('Delete'),
+                                            onPressed: () {
+                                              _removeCard(index);
+                                              Navigator.of(context).pop();
+                                            },
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  );
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  child: const Icon(
+                                    CupertinoIcons.delete,
+                                    color: CupertinoColors.systemRed,
+                                    size: 20,
+                                  ),
+                                ),
                               ),
-                              onPressed: () {
-                                showCupertinoDialog(
-                                  context: context,
-                                  builder: (BuildContext context) {
-                                    return CupertinoAlertDialog(
-                                      title: const Text('Delete Gift Card'),
-                                      content: Text(
-                                          'Are you sure you want to delete ${giftCard.serialCode}?'),
-                                      actions: [
-                                        CupertinoDialogAction(
-                                          child: const Text('Cancel'),
-                                          onPressed: () {
-                                            Navigator.of(context).pop();
-                                          },
-                                        ),
-                                        CupertinoDialogAction(
-                                          isDestructiveAction: true,
-                                          child: const Text('Delete'),
-                                          onPressed: () {
-                                            _removeCard(index);
-                                            Navigator.of(context).pop();
-                                          },
-                                        ),
-                                      ],
-                                    );
-                                  },
-                                );
-                              },
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     );
