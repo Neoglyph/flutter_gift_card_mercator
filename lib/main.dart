@@ -608,30 +608,100 @@ class _CapturePreviewScreenState extends State<CapturePreviewScreen> {
   }
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  bool _isDarkMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadThemePreference();
+  }
+
+  Future<void> _loadThemePreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _isDarkMode = prefs.getBool('isDarkMode') ?? false;
+      });
+    } catch (e) {
+      // Handle error silently, keep default theme
+    }
+  }
+
+  Future<void> _saveThemePreference(bool isDarkMode) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isDarkMode', isDarkMode);
+    } catch (e) {
+      // Handle error silently
+    }
+  }
+
+  void _toggleTheme() {
+    setState(() {
+      _isDarkMode = !_isDarkMode;
+    });
+    _saveThemePreference(_isDarkMode);
+  }
+
+  CupertinoThemeData get _lightTheme => const CupertinoThemeData(
+    brightness: Brightness.light,
+    primaryColor: CupertinoColors.systemBlue,
+    scaffoldBackgroundColor: CupertinoColors.systemGroupedBackground,
+    barBackgroundColor: CupertinoColors.systemBackground,
+    textTheme: CupertinoTextThemeData(
+      primaryColor: CupertinoColors.label,
+      textStyle: TextStyle(
+        color: CupertinoColors.label,
+      ),
+    ),
+  );
+
+  CupertinoThemeData get _darkTheme => const CupertinoThemeData(
+    brightness: Brightness.dark,
+    primaryColor: CupertinoColors.systemBlue,
+    scaffoldBackgroundColor: CupertinoColors.black,
+    barBackgroundColor: CupertinoColors.systemBackground,
+    textTheme: CupertinoTextThemeData(
+      primaryColor: CupertinoColors.label,
+      textStyle: TextStyle(
+        color: CupertinoColors.label,
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     return CupertinoApp(
       title: 'Mercator Cards',
-      theme: const CupertinoThemeData(
-        primaryColor: CupertinoColors.systemBlue,
-        scaffoldBackgroundColor: CupertinoColors.systemGroupedBackground,
-        barBackgroundColor: CupertinoColors.systemBackground,
-        textTheme: CupertinoTextThemeData(
-          primaryColor: CupertinoColors.label,
-        ),
+      theme: _isDarkMode ? _darkTheme : _lightTheme,
+      home: MyHomePage(
+        title: 'Gift Cards',
+        onThemeToggle: _toggleTheme,
+        isDarkMode: _isDarkMode,
       ),
-      home: const MyHomePage(title: 'Gift Cards'),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+  const MyHomePage({
+    super.key,
+    required this.title,
+    required this.onThemeToggle,
+    required this.isDarkMode,
+  });
 
   final String title;
+  final VoidCallback onThemeToggle;
+  final bool isDarkMode;
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -1062,6 +1132,14 @@ class _MyHomePageState extends State<MyHomePage> {
       navigationBar: CupertinoNavigationBar(
         middle: const Text('Gift Cards'),
         backgroundColor: CupertinoColors.systemBackground,
+        leading: CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: widget.onThemeToggle,
+          child: Icon(
+            widget.isDarkMode ? CupertinoIcons.sun_max : CupertinoIcons.moon,
+            color: CupertinoColors.systemBlue,
+          ),
+        ),
         trailing: CupertinoButton(
           padding: EdgeInsets.zero,
           onPressed: _showAddCardDialog,
@@ -1088,11 +1166,15 @@ class _MyHomePageState extends State<MyHomePage> {
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(
-                        color: CupertinoColors.systemBackground,
+                        color: CupertinoTheme.of(context).brightness == Brightness.dark
+                            ? CupertinoColors.systemGrey6.darkColor
+                            : CupertinoColors.systemBackground,
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
-                            color: CupertinoColors.systemGrey.withOpacity(0.1),
+                            color: CupertinoTheme.of(context).brightness == Brightness.dark
+                                ? CupertinoColors.black.withOpacity(0.3)
+                                : CupertinoColors.systemGrey.withOpacity(0.1),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
                           ),
@@ -1106,17 +1188,21 @@ class _MyHomePageState extends State<MyHomePage> {
                           padding: const EdgeInsets.all(16),
                           title: Text(
                             giftCard.serialCode,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w600,
-                              color: CupertinoColors.label,
+                              color: CupertinoTheme.of(context).brightness == Brightness.dark
+                                  ? CupertinoColors.white
+                                  : CupertinoColors.label,
                             ),
                           ),
                           subtitle: Text(
                             'Tap to spend • ${giftCard.formattedValue} remaining',
                             style: TextStyle(
                               fontSize: 15,
-                              color: CupertinoColors.secondaryLabel,
+                              color: CupertinoTheme.of(context).brightness == Brightness.dark
+                                  ? CupertinoColors.systemGrey2
+                                  : CupertinoColors.secondaryLabel,
                             ),
                           ),
                           trailing: Row(
@@ -1124,10 +1210,12 @@ class _MyHomePageState extends State<MyHomePage> {
                             children: [
                               Text(
                                 giftCard.formattedValue,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w600,
-                                  color: CupertinoColors.systemGreen,
+                                  color: CupertinoTheme.of(context).brightness == Brightness.dark
+                                      ? CupertinoColors.systemGreen.highContrastColor
+                                      : CupertinoColors.systemGreen,
                                 ),
                               ),
                               const SizedBox(width: 8),
