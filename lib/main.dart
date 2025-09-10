@@ -52,6 +52,16 @@ class GiftCard {
   }
 }
 
+double? parseLocaleDouble(String input) {
+  if (input.trim().isEmpty) return null;
+  
+  // Replace comma with dot for decimal parsing
+  final normalizedInput = input.trim().replaceAll(',', '.');
+  
+  // Parse the normalized string
+  return double.tryParse(normalizedInput);
+}
+
 void main() {
   runApp(const MyApp());
 }
@@ -386,7 +396,7 @@ class _CapturePreviewScreenState extends State<CapturePreviewScreen> {
               onPressed: () {
                 final valueText = valueController.text.trim();
                 if (valueText.isNotEmpty) {
-                  final value = double.tryParse(valueText);
+                  final value = parseLocaleDouble(valueText);
                   if (value != null && value > 0) {
                     // Add the card with captured serial and entered value
                     widget.onCardAdded(_foundSerial!, value);
@@ -950,7 +960,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 final valueText = valueController.text.trim();
 
                 if (serial.isNotEmpty && valueText.isNotEmpty) {
-                  final value = double.tryParse(valueText);
+                  final value = parseLocaleDouble(valueText);
                   if (value != null && value > 0) {
                     setState(() {
                       _giftCards.add(GiftCard(
@@ -1016,7 +1026,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 final valueText = valueController.text.trim();
 
                 if (serial.isNotEmpty && valueText.isNotEmpty) {
-                  final value = double.tryParse(valueText);
+                  final value = parseLocaleDouble(valueText);
                   if (value != null && value > 0) {
                     setState(() {
                       _giftCards[index] = GiftCard(
@@ -1089,7 +1099,7 @@ class _MyHomePageState extends State<MyHomePage> {
               onPressed: () async {
                 final amountText = amountController.text.trim();
                 if (amountText.isNotEmpty) {
-                  final amount = double.tryParse(amountText);
+                  final amount = parseLocaleDouble(amountText);
                   if (amount != null && amount > 0) {
                     final newValue = giftCard.value - amount;
                     if (newValue >= 0) {
